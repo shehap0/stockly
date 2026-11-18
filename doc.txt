@@ -1,0 +1,1443 @@
+# SUPER MEGA ENGINEERING PROMPT — MULTI-BRANCH AUTO PARTS MANAGEMENT SYSTEM
+
+## 0. YOUR ROLE
+
+Act as a senior software architect, senior full-stack engineer, database architect, security engineer, and QA engineer.
+
+You are responsible for designing and implementing a complete, production-minded inventory and sales management system for a small local automotive spare-parts business operating across THREE physical branches.
+
+Work autonomously. Make sensible engineering decisions, inspect the existing repository, implement the system, test it, identify problems, and fix them.
+
+Do not merely generate a plan or explain what you would do. Actually build the application.
+
+You must prioritize:
+- Correct business logic.
+- Data integrity.
+- Database design.
+- Security.
+- Maintainability.
+- Reliability.
+- Simple deployment.
+- Low operational costs.
+
+**IMPORTANT: DO NOT FOCUS ON FRONTEND DESIGN OR VISUAL STYLING.**
+
+I will provide separate design skills and instructions for the frontend later.
+
+You may implement the necessary application structure, routing, forms, API integration, and functional components, but do not independently invent a visual design system or spend time polishing the interface.
+
+---
+
+# 1. PROJECT OVERVIEW
+
+Build a centralized Auto Parts Inventory and Sales Management System.
+
+The business has three physical branches.
+
+Each branch:
+- Has its own employees.
+- Has its own physical inventory.
+- Can sell products.
+- Can add newly purchased products manually.
+- Can manage its own stock quantities.
+- Can view the availability of products in other branches.
+
+All branches share one central product catalog and one centralized database.
+
+The system must allow the owner to manage the entire business from one application.
+
+## Core business principles
+
+1. One company.
+2. Three branches.
+3. One shared product catalog.
+4. Separate inventory quantities for each branch.
+5. Centralized database.
+6. Real-time inventory synchronization.
+7. No inventory transfers between branches.
+8. No supplier management.
+9. No purchase-order management.
+10. No complicated accounting system.
+11. No payment gateway integration.
+12. Manual product creation and manual stock additions.
+13. Simple cash and card payment recording.
+
+This is a small business application, NOT an enterprise ERP platform.
+
+Avoid unnecessary complexity.
+
+---
+
+# 2. TECHNOLOGY STACK
+
+Use the following technology stack unless there is a compelling technical reason to change something. Document any proposed deviation before implementing it.
+
+## Frontend
+- React
+- TypeScript
+- Vite
+- React Router or an appropriate routing solution.
+- TanStack Query for server-state management.
+- Zod for data validation.
+- React Hook Form for form handling.
+
+Do not focus on frontend appearance.
+
+## Backend and infrastructure
+
+Use Supabase as the primary backend infrastructure.
+
+Services:
+- Supabase PostgreSQL: Main relational database.
+- Supabase Auth: Authentication.
+- Supabase Storage: Product images.
+- Supabase Realtime: Live inventory updates.
+- PostgreSQL Functions/RPC: Critical transactional business operations.
+- Row Level Security (RLS): Database-level authorization.
+
+## Hosting
+
+Target an inexpensive deployment:
+
+- Cloudflare Pages for frontend hosting.
+- Supabase Free initially.
+- Custom domain is optional.
+
+The architecture must be compatible with upgrading to paid infrastructure without major architectural changes.
+
+Do not introduce paid third-party dependencies unnecessarily.
+
+## Development environment
+
+Provide:
+- Environment variable examples.
+- Local development instructions.
+- Supabase local development instructions where appropriate.
+- Database migration instructions.
+- Testing instructions.
+- Deployment instructions.
+
+Never commit API secrets, service-role keys, or credentials.
+
+---
+
+# 3. SYSTEM ARCHITECTURE
+
+Implement a centralized architecture.
+
+Three branches connect to the same application and backend.
+
+Conceptually:
+
+BRANCH 1 ─┐
+BRANCH 2 ─┼── CENTRAL APPLICATION ── SUPABASE
+BRANCH 3 ─┘                           │
+                                      ├── PostgreSQL
+                                      ├── Authentication
+                                      ├── Storage
+                                      └── Realtime
+
+The database is the single source of truth.
+
+Never maintain independent browser inventories that attempt to synchronize their quantities afterward.
+
+All important business operations must be validated and persisted centrally.
+
+## Important architectural requirements
+
+- Every branch must access the same product catalog.
+- Inventory quantities must remain branch-specific.
+- Every sale must update the correct branch inventory.
+- Every stock addition must update the correct branch inventory.
+- Changes must become visible to other connected branches.
+- Critical inventory updates must be transactional.
+- Concurrent sales must not create negative stock.
+- Users must not be able to access unauthorized branch information.
+
+---
+
+# 4. DATABASE ARCHITECTURE
+
+Design a normalized PostgreSQL database.
+
+Create proper migrations, foreign keys, constraints, indexes, and relationships.
+
+Do not rely exclusively on frontend validation.
+
+## Required entities
+
+### 4.1 Companies
+
+Although there is initially only one company, use a simple company entity or equivalent configuration so the system does not assume every record is globally interchangeable.
+
+Fields:
+- id
+- name
+- created_at
+- updated_at
+
+Avoid unnecessary multi-tenant complexity.
+
+### 4.2 Branches
+
+Fields:
+- id
+- company_id
+- name
+- address (optional)
+- phone (optional)
+- is_active
+- created_at
+- updated_at
+
+There will initially be three branches.
+
+The owner should be able to manage branch information.
+
+### 4.3 User profiles
+
+Connect user profiles to Supabase Auth.
+
+Fields:
+- id
+- full_name
+- role
+- branch_id (nullable for owner)
+- is_active
+- created_at
+- updated_at
+
+Suggested roles:
+
+OWNER:
+- Full access to the entire company.
+- Access to all branches.
+- Manage users and permissions.
+- Manage products and categories.
+- View all inventory.
+- View all sales and reports.
+- Configure system settings.
+
+BRANCH_MANAGER:
+- Access to their assigned branch.
+- Manage branch inventory.
+- Record sales.
+- View branch reports.
+- Manage branch-level operations.
+
+BRANCH_EMPLOYEE:
+- View products.
+- View stock availability.
+- Record sales.
+- Add stock if permitted.
+- Access only authorized branch operations.
+
+Do not build employee surveillance, camera monitoring, or attendance tracking.
+
+### 4.4 Product categories
+
+Fields:
+- id
+- name
+- description (optional)
+- parent_category_id (optional)
+- is_active
+- created_at
+- updated_at
+
+Support category creation, editing, and deletion where safe.
+
+Prevent deletion of categories that are actively referenced unless products are reassigned.
+
+### 4.5 Products
+
+Products belong to the shared company catalog, NOT to individual branches.
+
+Suggested fields:
+
+- id
+- company_id
+- name
+- description (optional)
+- category_id (optional)
+- image_path (optional)
+- manufacturer (optional)
+- brand (optional)
+- car_make (optional)
+- car_model (optional)
+- manufacturing_year (optional)
+- selling_price
+- purchase_cost
+- sku (optional)
+- barcode (optional)
+- oem_number (optional)
+- condition (optional)
+- is_active
+- created_at
+- updated_at
+
+Important:
+
+Not every product needs every attribute.
+
+The only mandatory product information should be:
+- Product name.
+- Selling price.
+
+Quantity and branch must be supplied when adding stock, not when defining the shared product.
+
+Purchase cost can be optional if the business does not know it.
+
+Support products with incomplete information.
+
+Prices must use appropriate decimal/numeric database types. Never use floating-point arithmetic for financial calculations.
+
+### 4.6 Custom product attributes
+
+Implement a configurable product attribute system.
+
+The owner should be able to define custom attributes without changing the database schema or modifying application source code.
+
+Examples:
+- Engine size.
+- Transmission type.
+- Vehicle generation.
+- Product material.
+- Color.
+- Additional compatibility information.
+
+Attribute definition fields:
+
+- id
+- company_id
+- name
+- data_type
+- is_required
+- is_active
+- options (for dropdowns)
+- display_order
+- created_at
+- updated_at
+
+Supported types:
+- Text.
+- Number.
+- Boolean.
+- Dropdown.
+- Date.
+
+Store product-specific values using a properly validated structure linked to the attribute definitions.
+
+Consider a relational product_attribute_values table or a suitable JSONB implementation.
+
+Requirements:
+- Attributes must be optional by default.
+- Required attributes should only be enforced when explicitly configured.
+- Validate values according to their declared types.
+- Preserve existing attribute values when attributes are edited.
+- Handle deleted or deactivated attributes safely.
+- Do not require SKU, OEM number, barcode, or vehicle information.
+
+### 4.7 Branch inventory
+
+This is one of the most important database entities.
+
+Create a branch_inventory table.
+
+Fields:
+- id
+- branch_id
+- product_id
+- quantity
+- low_stock_threshold (optional)
+- updated_at
+
+Enforce a unique constraint on:
+
+(branch_id, product_id)
+
+Requirements:
+
+- Each product can exist in multiple branches.
+- Each branch has its own quantity.
+- Quantity must never be negative.
+- The total company quantity is calculated by aggregating branch quantities.
+- Products with zero quantity should remain in the catalog.
+- Branches must be able to view other branches' availability.
+
+Never duplicate product information in every branch's inventory record.
+
+### 4.8 Inventory movements
+
+Create a permanent inventory movement history.
+
+Suggested fields:
+- id
+- branch_id
+- product_id
+- movement_type
+- quantity_change
+- previous_quantity
+- new_quantity
+- unit_purchase_cost (optional)
+- reason (optional)
+- reference_type
+- reference_id
+- created_by
+- created_at
+
+Supported movement types:
+
+- INITIAL_STOCK
+- STOCK_ADDITION
+- SALE
+- SALE_RETURN
+- DAMAGE
+- MANUAL_ADJUSTMENT
+- OTHER
+
+Every stock change must create a corresponding movement record.
+
+The movement history must be auditable.
+
+Never silently modify inventory quantities without recording the reason.
+
+Do not implement branch-to-branch transfer functionality.
+
+### 4.9 Sales
+
+Create sales records.
+
+Fields:
+- id
+- company_id
+- branch_id
+- customer_id (nullable)
+- sale_number
+- subtotal
+- discount_type
+- discount_value
+- discount_amount
+- total_amount
+- payment_method
+- status
+- created_by
+- created_at
+- updated_at
+
+Payment methods:
+
+- CASH
+- CARD
+
+These values are records of payment methods only.
+
+Do not integrate payment gateways or process actual card payments.
+
+Sale statuses should support at least:
+- COMPLETED
+- VOIDED
+
+Consider safe handling of returns and refunds.
+
+### 4.10 Sale items
+
+Fields:
+- id
+- sale_id
+- product_id
+- product_name_snapshot
+- quantity
+- unit_selling_price
+- unit_purchase_cost_snapshot (nullable)
+- discount_amount
+- line_total
+- created_at
+
+IMPORTANT:
+
+Store historical price snapshots.
+
+Changing a product's current selling price must never change the price of an older sale.
+
+Similarly, preserve the purchase cost used when calculating historical gross profit.
+
+### 4.11 Customers
+
+Keep customer management optional and simple.
+
+Fields:
+- id
+- name
+- phone (optional)
+- notes (optional)
+- created_at
+- updated_at
+
+Customers are not required for every sale.
+
+Support anonymous/walk-in customers.
+
+Allow the owner to view a customer's sales history.
+
+---
+
+# 5. INVENTORY BUSINESS LOGIC
+
+Implement inventory operations as secure, atomic database transactions.
+
+## 5.1 Product creation
+
+When a product is created:
+- Validate required fields.
+- Validate optional attributes.
+- Save the product in the shared catalog.
+- Do not automatically assign stock to every branch.
+- Allow stock to be added separately.
+
+## 5.2 Adding stock
+
+A branch employee selects:
+
+- Product.
+- Branch (restricted to authorized branches).
+- Quantity.
+- Purchase cost (optional).
+- Reason (optional).
+
+The server:
+1. Validates the user and branch permissions.
+2. Validates the product.
+3. Validates the quantity.
+4. Creates or updates the branch inventory record.
+5. Creates an inventory movement.
+6. Commits the operation atomically.
+
+This is how the business manually records products purchased locally.
+
+Do not create supplier or purchase-order entities.
+
+## 5.3 Stock adjustments
+
+Allow authorized users to correct inventory quantities.
+
+Examples:
+- Physical count correction.
+- Damaged product.
+- Lost product.
+- Incorrect previous entry.
+
+Every adjustment must include:
+- Product.
+- Branch.
+- Quantity change or corrected quantity.
+- Reason.
+- User.
+- Timestamp.
+
+Negative inventory is forbidden.
+
+## 5.4 Inventory queries
+
+Implement queries for:
+
+- Stock in a particular branch.
+- Stock across all branches.
+- Total company stock.
+- Products with zero stock.
+- Low-stock products.
+- Products by category.
+- Products compatible with a selected vehicle, where compatibility information exists.
+- Search by product name, SKU, barcode, OEM number, and optional vehicle attributes.
+
+The search must work even when optional attributes are missing.
+
+## 5.5 Low-stock alerts
+
+Support a configurable threshold for each product at each branch.
+
+For example:
+
+Product: Oil Filter
+Branch 1 quantity: 2
+Low-stock threshold: 5
+
+This product should appear in the low-stock list for Branch 1.
+
+A branch can have a different threshold for the same product.
+
+---
+
+# 6. SALES MANAGEMENT
+
+Build a simple sales recording system, not a sophisticated retail POS platform.
+
+## 6.1 Sale workflow
+
+1. Employee opens the sales section.
+2. Employee selects products.
+3. Employee enters quantities.
+4. System retrieves current selling prices.
+5. System calculates subtotal.
+6. Employee optionally applies a discount.
+7. Employee selects CASH or CARD.
+8. Employee confirms the sale.
+9. Server validates and records the transaction.
+10. Inventory decreases automatically.
+11. Inventory movement records are created.
+12. Sale appears in sales history.
+13. Other branches receive updated stock information.
+
+## 6.2 Discounts
+
+Support:
+
+- Fixed amount discount.
+- Percentage discount.
+
+Requirements:
+- Discounts cannot exceed the sale subtotal.
+- Discounts cannot create negative totals.
+- Define clear rounding rules.
+- Record the original subtotal.
+- Record the discount amount.
+- Record the final total.
+- Restrict discount permissions where appropriate.
+
+## 6.3 Transaction safety
+
+This is critical.
+
+A sale must be processed as one atomic database transaction.
+
+The following must happen together:
+
+- Validate stock availability.
+- Deduct quantities.
+- Insert sale.
+- Insert sale items.
+- Insert inventory movement records.
+
+If any operation fails, everything must roll back.
+
+Never deduct inventory before confirming that the entire transaction can succeed.
+
+Prevent race conditions.
+
+Example:
+
+Branch 1 has one brake pad.
+
+Two employees attempt to sell the last unit simultaneously.
+
+Only one sale may succeed.
+
+Use appropriate PostgreSQL row locking or equivalent transactional mechanisms.
+
+Use an idempotency mechanism to prevent duplicate sales when a user retries after a network timeout.
+
+## 6.4 Sale history
+
+Support:
+- Search by sale number.
+- Search by date.
+- Filter by branch.
+- Filter by payment method.
+- Filter by employee.
+- View individual sale details.
+- View products sold.
+- View discounts.
+- View final payment amount.
+
+Do not allow historical sales to be silently edited.
+
+For voids or returns, create traceable compensating inventory movements and preserve the original transaction.
+
+---
+
+# 7. REAL-TIME SYNCHRONIZATION
+
+Use Supabase Realtime where appropriate.
+
+All branches must receive relevant inventory updates without refreshing the entire application.
+
+Example:
+
+1. Branch 1 has 10 oil filters.
+2. Employee sells 2.
+3. The server updates inventory to 8.
+4. The server commits the transaction.
+5. Branch 2 receives the database change.
+6. Branch 3 receives the database change.
+7. Both branches update their displayed availability.
+
+Important rules:
+
+- PostgreSQL is the source of truth.
+- Realtime is a notification mechanism, not the primary storage mechanism.
+- Never trust a realtime event as proof that a transaction succeeded.
+- Refresh or reconcile the relevant data from PostgreSQL when necessary.
+- Avoid subscribing every user to unnecessary data.
+- Restrict subscriptions to appropriate records and authorized data.
+- Handle reconnecting clients.
+- Handle missed realtime events.
+- Use TanStack Query invalidation or equivalent cache reconciliation.
+
+A temporary realtime disconnection must not corrupt inventory.
+
+## Internet failure
+
+Initially, use an ONLINE-ONLY architecture.
+
+If the connection is unavailable:
+- Do not pretend that a sale was successfully synchronized.
+- Show an appropriate connection error.
+- Do not silently queue sales without implementing proper offline transaction handling.
+- Allow retrying failed requests safely.
+- Use idempotency to prevent duplicate operations.
+
+Offline-first functionality is explicitly outside the initial scope.
+
+---
+
+# 8. AUTHENTICATION AND AUTHORIZATION
+
+Use Supabase Auth.
+
+Implement:
+
+- Login.
+- Logout.
+- Session management.
+- Password reset.
+- User activation/deactivation.
+- Role-based permissions.
+- Branch-level permissions.
+
+The frontend must never be the only security boundary.
+
+Implement PostgreSQL Row Level Security policies.
+
+Security requirements:
+
+1. Employees can only access authorized branch operations.
+2. Employees cannot change their own roles.
+3. Employees cannot assign themselves to another branch.
+4. Only authorized users can modify products and product attributes.
+5. Only authorized users can modify selling prices.
+6. Only authorized users can perform manual inventory adjustments.
+7. Only authorized users can access company-wide reports.
+8. Owner accounts can access all branches.
+9. Users cannot access another company's records.
+10. Inactive users must not retain application access.
+
+Use secure database functions for privileged operations.
+
+Never expose Supabase service-role credentials in browser code.
+
+Do not disable RLS for convenience.
+
+---
+
+# 9. PRODUCT IMAGE MANAGEMENT
+
+Use Supabase Storage.
+
+Requirements:
+
+- Upload product images.
+- Update product images.
+- Remove images safely.
+- Store image paths in PostgreSQL.
+- Generate appropriate public or signed URLs according to the access model.
+- Validate file type and size.
+- Support JPEG, PNG, and WebP.
+- Prevent arbitrary file uploads.
+- Use consistent storage paths.
+- Avoid storing image binaries directly inside PostgreSQL.
+
+The application should still work if a product has no image.
+
+Optimize images appropriately to reduce bandwidth usage.
+
+---
+
+# 10. REPORTING AND ANALYTICS
+
+Build practical reports for a small business.
+
+## Dashboard metrics
+
+- Sales today.
+- Sales this week.
+- Sales this month.
+- Number of transactions.
+- Total products.
+- Total units in stock.
+- Total estimated inventory value.
+- Estimated gross profit.
+- Low-stock products.
+- Out-of-stock products.
+
+## Branch reports
+
+Allow filtering by:
+- Branch.
+- Date range.
+
+Compare:
+- Sales.
+- Number of transactions.
+- Products sold.
+- Inventory quantity.
+- Estimated inventory value.
+- Gross profit.
+
+## Inventory reports
+
+- Product stock by branch.
+- Total company stock.
+- Low-stock products.
+- Out-of-stock products.
+- Inventory movement history.
+- Stock additions.
+- Stock adjustments.
+- Most frequently sold products.
+- Products with no recent sales.
+
+## Sales reports
+
+- Daily sales.
+- Weekly sales.
+- Monthly sales.
+- Cash payments.
+- Card payments.
+- Discounts.
+- Best-selling products.
+- Estimated gross profit.
+
+## Financial calculation rules
+
+Revenue is not profit.
+
+Gross profit:
+
+Revenue - Cost of Goods Sold
+
+Cost of Goods Sold must use the purchase cost snapshot stored in the sale item.
+
+If purchase cost is unknown, do not invent a profit figure.
+
+Show incomplete cost information appropriately.
+
+Inventory valuation should be clearly identified as an estimate based on available purchase costs.
+
+Do not build a full accounting or bookkeeping system.
+
+---
+
+# 11. AUDIT LOGGING
+
+Implement a lightweight audit log.
+
+Track important changes:
+
+- Product creation.
+- Product modification.
+- Product deactivation.
+- Price changes.
+- Product attribute changes.
+- Stock additions.
+- Stock adjustments.
+- Sales.
+- Sale voids.
+- User creation.
+- Permission changes.
+
+Suggested fields:
+
+- id
+- user_id
+- branch_id (nullable)
+- action
+- entity_type
+- entity_id
+- old_values (optional JSONB)
+- new_values (optional JSONB)
+- created_at
+
+Users must not be able to modify or delete audit records through normal application operations.
+
+Do not record passwords, tokens, or sensitive authentication information.
+
+---
+
+# 12. BUSINESS FEATURES EXPLICITLY OUT OF SCOPE
+
+Do NOT implement the following:
+
+- Branch-to-branch stock transfers.
+- Supplier management.
+- Supplier profiles.
+- Supplier payment management.
+- Purchase orders.
+- Complex purchasing workflows.
+- Employee camera surveillance.
+- Employee monitoring.
+- Attendance management.
+- Payment gateway integration.
+- Online payment processing.
+- Customer-facing ecommerce.
+- Delivery management.
+- Warehouse logistics.
+- Complex accounting.
+- Payroll.
+- Multi-currency accounting.
+- Enterprise multi-tenant subscription management.
+- Offline-first inventory synchronization.
+
+The business manually records locally purchased stock.
+
+The business records whether customers paid cash or card.
+
+Keep these workflows simple.
+
+---
+
+# 13. PERFORMANCE AND COST REQUIREMENTS
+
+This is a small business with three branches and a limited number of simultaneous users.
+
+Do not optimize for hundreds or thousands of concurrent users unnecessarily.
+
+However, implement sound engineering practices.
+
+Requirements:
+
+- Use database indexes for frequently searched fields.
+- Paginate large product and sales lists.
+- Avoid N+1 database queries.
+- Avoid unnecessary realtime subscriptions.
+- Avoid fetching the entire inventory on every page load.
+- Cache appropriate read-only queries.
+- Invalidate cached information after mutations.
+- Optimize product images.
+- Avoid unnecessary background jobs.
+- Avoid unnecessary third-party services.
+- Keep infrastructure compatible with Supabase Free initially.
+
+Do not assume that free hosting guarantees production reliability.
+
+Document:
+- Free-tier limitations.
+- Database backup limitations.
+- Storage limits.
+- Bandwidth limits.
+- Inactivity restrictions.
+- Upgrade requirements.
+
+Provide a practical backup and recovery strategy.
+
+The business must never depend exclusively on an unverified free-tier backup mechanism.
+
+---
+
+# 14. DATABASE MIGRATIONS AND DATA INTEGRITY
+
+Use version-controlled database migrations.
+
+Never rely on manually modifying production database tables without corresponding migration files.
+
+Every migration should be:
+- Versioned.
+- Reproducible.
+- Documented.
+- Safe to apply.
+- Reviewed for destructive operations.
+
+Create seed data for development.
+
+Include:
+- One demo company.
+- Three demo branches.
+- Example users.
+- Example categories.
+- Example products.
+- Example inventory.
+- Example sales.
+
+Use fake information only.
+
+Never put real credentials in seed files.
+
+---
+
+# 15. TESTING REQUIREMENTS
+
+Testing is mandatory.
+
+Do not consider the project complete simply because the frontend loads.
+
+Use appropriate testing tools such as:
+- Vitest.
+- React Testing Library.
+- Supabase/PostgreSQL integration tests.
+- Playwright for end-to-end tests.
+
+## 15.1 Product tests
+
+- Create a product with only mandatory information.
+- Create a product with optional attributes.
+- Create a product with custom attributes.
+- Update product details.
+- Change selling price.
+- Deactivate a product.
+- Reject invalid prices.
+- Reject invalid custom attribute values.
+
+## 15.2 Inventory tests
+
+- Add initial stock.
+- Add stock to an existing product.
+- Add stock at a different branch.
+- Verify separate branch quantities.
+- Verify total company stock.
+- Prevent negative quantities.
+- Verify stock movement history.
+- Verify low-stock alerts.
+- Verify unauthorized stock changes fail.
+
+## 15.3 Sales tests
+
+- Complete a cash sale.
+- Complete a card sale.
+- Apply fixed discount.
+- Apply percentage discount.
+- Reject invalid discounts.
+- Deduct inventory correctly.
+- Preserve historical prices.
+- Preserve historical purchase costs.
+- Reject sales with insufficient stock.
+- Verify anonymous customer sales.
+- Verify sales linked to customers.
+- Verify sale voids and returns.
+
+## 15.4 Concurrency tests
+
+Simulate two employees selling the last available unit simultaneously.
+
+Expected result:
+
+Exactly one transaction succeeds.
+
+Inventory never becomes negative.
+
+No partial sale records remain.
+
+## 15.5 Multi-branch tests
+
+Verify:
+
+- Branch 1 can see its own stock.
+- Branch 2 can see its own stock.
+- Branch 3 can see its own stock.
+- All authorized branches can view shared product availability.
+- A sale in Branch 1 updates company-wide stock.
+- Other branches receive the corresponding realtime update.
+- A branch cannot modify another branch's inventory without authorization.
+
+## 15.6 Security tests
+
+Test RLS policies directly.
+
+Attempt:
+- Unauthorized branch access.
+- Unauthorized product modifications.
+- Unauthorized price changes.
+- Unauthorized role modifications.
+- Access to inactive user operations.
+- Access to another company's records.
+- Unauthorized direct database writes.
+
+All must fail appropriately.
+
+---
+
+# 16. DEVELOPMENT MILESTONES
+
+Do not attempt to implement everything in one uncontrolled operation.
+
+Work in milestones.
+
+## MILESTONE 0 — Repository inspection
+
+Before changing anything:
+
+1. Inspect the repository.
+2. Identify the existing framework and dependencies.
+3. Inspect existing architecture.
+4. Identify existing useful components and code.
+5. Identify potential conflicts.
+6. Understand the existing environment.
+
+Do not destroy existing work.
+
+Produce a concise architecture proposal.
+
+Create:
+- PROJECT_SPEC.md
+- ARCHITECTURE.md
+- IMPLEMENTATION_PLAN.md
+
+Then proceed autonomously.
+
+## MILESTONE 1 — Infrastructure and database
+
+Implement:
+- Supabase integration.
+- Database schema.
+- Database migrations.
+- Branches.
+- User profiles.
+- Authentication.
+- RLS.
+- Seed data.
+- Environment configuration.
+
+Test database access and authorization.
+
+## MILESTONE 2 — Product catalog
+
+Implement:
+- Product creation.
+- Product editing.
+- Product deactivation.
+- Categories.
+- Product image storage.
+- Optional product fields.
+- Custom product attributes.
+- Product searching and filtering.
+
+Test all CRUD operations and validation.
+
+## MILESTONE 3 — Inventory management
+
+Implement:
+- Branch-specific inventory.
+- Stock additions.
+- Stock adjustments.
+- Inventory movement history.
+- Stock aggregation.
+- Low-stock thresholds.
+- Cross-branch availability.
+- Realtime inventory updates.
+
+Test inventory consistency.
+
+## MILESTONE 4 — Sales
+
+Implement:
+- Sales creation.
+- Sale items.
+- Cash/card payment recording.
+- Discounts.
+- Inventory deduction.
+- Sale history.
+- Customer association.
+- Safe sale voiding and return handling.
+
+Implement transactional database functions.
+
+Test concurrent sales and idempotency.
+
+## MILESTONE 5 — Dashboard and reporting
+
+Implement:
+- Business overview.
+- Branch comparisons.
+- Inventory reports.
+- Sales reports.
+- Gross profit calculations.
+- Date filters.
+
+Verify all calculations against known test data.
+
+## MILESTONE 6 — System administration
+
+Implement:
+- User management.
+- Roles and permissions.
+- Branch access.
+- Settings.
+- Audit logs.
+
+Verify security boundaries.
+
+## MILESTONE 7 — Production readiness
+
+Implement and verify:
+- Error handling.
+- Loading states.
+- Empty states.
+- Network failure handling.
+- Reconnection handling.
+- Backup documentation.
+- Deployment configuration.
+- Production environment validation.
+- Database migration instructions.
+- Logging.
+- Security review.
+
+Run the complete test suite.
+
+Fix all critical and high-priority issues.
+
+---
+
+# 17. CODE QUALITY REQUIREMENTS
+
+Follow these standards throughout the project:
+
+1. Use strict TypeScript.
+2. Avoid `any` unless absolutely necessary and documented.
+3. Use reusable, maintainable modules.
+4. Separate business logic from UI components.
+5. Separate database operations from presentation.
+6. Validate all external inputs.
+7. Handle errors explicitly.
+8. Use consistent naming conventions.
+9. Avoid duplicated business logic.
+10. Avoid unnecessary abstractions.
+11. Avoid giant components and giant files.
+12. Document complex business rules.
+13. Never expose sensitive credentials.
+14. Never trust client-side permissions.
+15. Never use floating-point calculations for money.
+16. Never silently swallow errors.
+17. Never create fake successful responses.
+18. Never leave core functionality as TODO placeholders.
+19. Never implement mock functionality in place of real backend functionality.
+20. Do not introduce dependencies without a clear reason.
+
+Prefer straightforward engineering over unnecessary design patterns.
+
+---
+
+# 18. ANTI-SHORTCUT RULES
+
+These rules are extremely important.
+
+DO NOT:
+
+- Build a frontend-only demo and call it complete.
+- Use localStorage as the primary database.
+- Store inventory independently in each browser.
+- Fake realtime synchronization.
+- Hardcode three branches throughout the application.
+- Hardcode product categories.
+- Make optional product attributes mandatory.
+- Use client-side-only stock validation.
+- Update stock without inventory movement history.
+- Allow negative stock.
+- Allow concurrent sales to oversell inventory.
+- Use insecure database policies.
+- Disable RLS to make development easier.
+- Expose service-role credentials.
+- Use mock data in production.
+- Use placeholder buttons for core features.
+- Ignore failed database requests.
+- Modify historical sales when product prices change.
+- Create unnecessary enterprise modules.
+- Implement branch transfers.
+- Introduce supplier management.
+
+If a feature cannot be implemented correctly, document the blocker instead of pretending it works.
+
+---
+
+# 19. REQUIRED DOCUMENTATION
+
+Create and maintain these documents:
+
+PROJECT_SPEC.md
+- Business requirements.
+- Functional requirements.
+- Non-functional requirements.
+- Scope and exclusions.
+
+ARCHITECTURE.md
+- System architecture.
+- Technology decisions.
+- Data flow.
+- Backend responsibilities.
+- Realtime architecture.
+
+DATABASE.md
+- Database tables.
+- Relationships.
+- Constraints.
+- Indexes.
+- RLS overview.
+- Transactional functions.
+
+BUSINESS_RULES.md
+- Inventory rules.
+- Sales rules.
+- Discount calculations.
+- Profit calculations.
+- Branch permissions.
+- Stock movement rules.
+
+API_REFERENCE.md
+- Database operations.
+- RPC functions.
+- Parameters.
+- Expected responses.
+- Error handling.
+
+SECURITY.md
+- Authentication.
+- Authorization.
+- RLS policies.
+- Secrets management.
+- Security considerations.
+
+DEPLOYMENT.md
+- Supabase setup.
+- Cloudflare Pages setup.
+- Environment variables.
+- Database migrations.
+- Deployment steps.
+- Backup and recovery.
+
+TESTING.md
+- Test commands.
+- Test coverage.
+- Integration testing.
+- Concurrency testing.
+- Security testing.
+
+Update documentation whenever implementation decisions change.
+
+---
+
+# 20. FINAL ACCEPTANCE CRITERIA
+
+The system is not considered complete until all the following conditions are satisfied.
+
+[ ] Three branches exist and can be managed.
+
+[ ] All branches share the same product catalog.
+
+[ ] Product attributes are configurable and optional.
+
+[ ] Products can have images.
+
+[ ] Each branch has separate inventory quantities.
+
+[ ] Employees can manually add stock.
+
+[ ] Employees can make authorized stock adjustments.
+
+[ ] Every stock movement is recorded.
+
+[ ] Employees can view product availability across branches.
+
+[ ] Sales can be recorded using cash or card.
+
+[ ] Discounts work correctly.
+
+[ ] Every completed sale deducts inventory atomically.
+
+[ ] Concurrent sales cannot oversell stock.
+
+[ ] Historical sale prices remain unchanged.
+
+[ ] Sales history works.
+
+[ ] Customer records are optional.
+
+[ ] Low-stock alerts work.
+
+[ ] Branch-level reports work.
+
+[ ] Company-wide reports work for authorized users.
+
+[ ] Gross profit calculations are accurate when cost data exists.
+
+[ ] Realtime updates work.
+
+[ ] Authentication works.
+
+[ ] Branch permissions work.
+
+[ ] RLS security tests pass.
+
+[ ] Product image uploads work.
+
+[ ] Database migrations are reproducible.
+
+[ ] Automated tests pass.
+
+[ ] Production deployment instructions are complete.
+
+[ ] Backup and recovery procedures are documented.
+
+[ ] No core functionality is implemented using fake data or placeholders.
+
+---
+
+# 21. FINAL WORKING INSTRUCTIONS
+
+You are authorized to make reasonable architectural and implementation decisions autonomously.
+
+Do not ask me to approve every small technical decision.
+
+When a decision is not explicitly specified:
+1. Choose the simplest reliable solution.
+2. Prefer technologies already present in the repository.
+3. Avoid adding unnecessary dependencies.
+4. Document important decisions.
+5. Preserve the defined business requirements.
+
+If an existing skill, instruction file, or project-specific convention is present, inspect it and follow it where applicable.
+
+If the repository contains existing work, preserve it.
+
+Do not overwrite important files without inspecting them.
+
+Do not delete user data.
+
+Do not deploy to a live production environment, modify real production data, or incur paid infrastructure costs without explicit authorization.
+
+You can autonomously install normal development dependencies, create local migrations, build features, and run tests.
+
+## Execution behavior
+
+After each milestone:
+
+1. Summarize what was implemented.
+2. List important files created or modified.
+3. Report tests executed.
+4. Report test results.
+5. Identify known issues.
+6. Continue to the next milestone.
+
+Do not stop after producing documentation or an implementation plan.
+
+Continue building until the complete system is implemented and tested, or a genuine external blocker prevents progress.
+
+At the end, provide:
+
+- Completed functionality.
+- Final architecture.
+- Database overview.
+- Security implementation.
+- Test results.
+- Remaining limitations.
+- Local startup instructions.
+- Deployment instructions.
+- Estimated infrastructure costs.
+- Any decisions requiring business-owner input.
+
+**FINAL PRIORITY: Build a reliable, maintainable, secure, simple multi-branch inventory and sales application for a real small automotive spare-parts business. Correct business logic and data integrity matter more than feature quantity or architectural complexity.**
