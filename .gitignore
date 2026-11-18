@@ -3,6 +3,12 @@ dist
 coverage
 .env
 .env.local
+.env.*
+!.env.example
 supabase/.temp
+supabase/.branches
 *.log
 tests/.supabase-env.json
+*.pem
+*.p12
+*.key
