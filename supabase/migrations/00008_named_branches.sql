@@ -14,7 +14,7 @@ where short_code in ('BR1', 'BR2', 'BR3');
 update public.profiles
 set branch_id = (select b.id from public.branches b where b.short_code = 'BR2' limit 1),
     updated_at = now()
-where branch_id = (select b.id from public.branches where short_code = 'BR3' limit 1)
+where branch_id = (select b.id from public.branches b where b.short_code = 'BR3' limit 1)
   and role <> 'OWNER'
   and exists (select 1 from public.branches where short_code = 'BR2');
 

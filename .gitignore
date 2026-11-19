@@ -12,3 +12,5 @@ tests/.supabase-env.json
 *.pem
 *.p12
 *.key
+.impeccable
+hook.cache.json
